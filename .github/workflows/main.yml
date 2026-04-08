@@ -1,18 +1,12 @@
 name: YT Summarizer
 on:
   schedule:
-    # Runs every 30 minutes to check if it's time in Germany
-    - cron: '*/30 * * * *'
-  workflow_dispatch:
-
-#env:
-#  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    - cron: '0 */6 * * *' # Runs every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+  workflow_dispatch: # Allows you to run it manually for testing
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Setup Python
@@ -20,18 +14,11 @@ jobs:
         with:
           python-version: '3.9'
       - name: Install Deps
-        run: pip install -r requirements.txt
-      - name: Run Bot
+        run: pip install requests google-generativeai mailjet_rest pytz
+      - name: Run
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
           MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
         run: python script.py
-      - name: Save DB
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add processed_videos.json
-          git commit -m "Update DB" || exit 0
-          git push
