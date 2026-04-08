@@ -19,7 +19,15 @@ CHANNELS = {
     "Francesco Zini": "UCiGp4I5ehgrCF8cKlXvvX2w",
     "Frank Vlog": "UC9w_-HRrQwkyWlbI2mTedxQ",
     "Giulia Crossbow": "UCLYbP4QpYiwcnIqm_cgAtJg",
-    "Wizards and Warriors": "UCwqY9GjXBdSYeUZiinbFXyQ"
+    "Wizards and Warriors": "UCwqY9GjXBdSYeUZiinbFXyQ",
+    "Mocho": "UC1Qm-YEYyAAQYXgI_vsIqCw",
+    "Dami Lee": "UCJ_2hNMxOzNjviJBiLWHMqg",
+    "Economics Explained": "UCZ4AMrDcNrfy3X6nsU8-rPg",
+    "How Money Works": "UCkCGANrihzExmu9QiqZpPlQ",
+    "Iron Snail": "UC-0kjvCj9Z_pL_yH648Uq7w",
+    "Signor Franz": "UCLpGbBGYr9yCGbSwDEFvrMQ",
+    "Francesco Costa": "UCWIkgZzXznmBgU9uQsvjZAQ",
+    "Lost le Blanc": "UCt_NLJ4McJlCyYM-dSPRo7Q"
 }
 
 def get_latest_vid(channel_id):
