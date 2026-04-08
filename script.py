@@ -4,6 +4,7 @@ from google import genai
 import re
 import time
 from datetime import datetime
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # --- CONFIGURATION ---
 CHANNELS = {
@@ -31,11 +32,17 @@ def get_latest_vid(channel_id):
     except:
         return (None, None)
 
+def get_transcript(video_id):
+    try:
+        # Tenta di recuperare i sottotitoli in italiano o inglese
+        srt = YouTubeTranscriptApi.get_transcript(video_id, languages=['it', 'en'])
+        return " ".join([i['text'] for i in srt])[:15000]
+    except Exception:
+        return None
+
 if __name__ == "__main__":
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     rss_items = ""
-    
-    # Use the 3.1 Flash-Lite model which has a higher 2026 Free Quota
     MODEL_NAME = "gemini-3.1-flash-lite-preview"
     
     for name, cid in CHANNELS.items():
@@ -44,58 +51,54 @@ if __name__ == "__main__":
             url = f"https://www.youtube.com/watch?v={vid}"
             print(f"Processing {name}...")
             
+            transcript_text = get_transcript(vid)
+            # Etichetta basata sulla disponibilità del transcript
+            label = "TRANSCRIPT" if transcript_text else "TITLE-ONLY"
+            
             try:
-                # Prompt dinamico per la lingua e profondità
+                if transcript_text:
+                    source_material = f"TRANSCRIPT: {transcript_text}"
+                else:
+                    source_material = f"TITLE: {v_title}"
+
                 prompt = (
-                    f"Analyze in depth the YouTube video titled: '{v_title}'.\n"
-                    f"Video URL: {url}\n\n"
-                    "Instructions for the summary:\n"
-                    "1. LANGUAGE: If the video/title is in Italian, provide the summary in Italian. "
-                    "If the video/title is in English, provide the summary in English. "
-                    "In all other cases, provide the summary in English.\n"
-                    "2. STRUCTURE: Provide a detailed summary structured in 5 key points.\n"
-                    "3. DEPTH: Each point must be descriptive (at least 2-3 sentences) explaining "
-                    "not just 'what' happens, but also the 'why' or the context behind the information.\n"
-                    "4. TONE: Maintain an informative and engaging tone."
+                    f"Analyze the following content from a YouTube video titled '{v_title}'.\n"
+                    f"Source: {source_material}\n\n"
+                    "Instructions:\n"
+                    f"1. START: Begin the summary with the exact word '{label}' in bold.\n"
+                    "2. LANGUAGE: If the content is in Italian, summarize in Italian. If English, summarize in English. Otherwise, use English.\n"
+                    "3. STRUCTURE: 5 detailed key points.\n"
+                    "4. DEPTH: 2-3 sentences per point explaining the 'what' and 'why'.\n"
+                    "5. TONE: Informative and engaging."
                 )
                 
-                response = client.models.generate_content(
-                    model=MODEL_NAME, 
-                    contents=prompt
-                )
+                response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
                 summary = response.text.strip().replace("\n", "<br>")
-                summary = summary.replace("  ", "&nbsp;&nbsp;")
             except Exception as e:
-                error_msg = str(e)
-                if "429" in error_msg:
-                    print(f"!!! QUOTA EXCEEDED for {name}. Stopping AI calls for today.")
-                    summary = "Daily AI limit reached. Watch video for details."
-                else:
-                    print(f"Error for {name}: {error_msg}")
-                    summary = "AI processing error."
+                print(f"Error for {name}: {e}")
+                summary = f"**{label}**<br>Summary skipped due to error."
             
-            # Change the rss_items block in your script.py to this:
             rss_items += f"""
             <item>
                 <title>{name}: {v_title}</title>
                 <link>{url}</link>
                 <description><![CDATA[{summary}]]></description>
                 <pubDate>{datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0000')}</pubDate>
-                <guid isPermaLink="false">{vid}-{datetime.now().strftime('%Y%m%d')}</guid>
+                <guid isPermaLink="false">{vid}-{int(time.time())}</guid>
             </item>"""
             
-            time.sleep(4) # Slight pause to stay safe
+            time.sleep(5)
 
     rss_feed = f"""<?xml version="1.0" encoding="UTF-8" ?>
     <rss version="2.0">
     <channel>
         <title>YouTube Intelligence</title>
         <link>https://github.com/lucabenvenuti/ytTranscripts</link>
-        <description>AI Summaries</description>
+        <description>AI Summaries with Transcripts</description>
         {rss_items}
     </channel>
     </rss>"""
 
     with open("feed.xml", "w", encoding="utf-8") as f:
         f.write(rss_feed)
-    print("Success: Feed updated.")
+    print("Success: Feed updated with labels.")
