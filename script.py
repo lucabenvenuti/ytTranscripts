@@ -101,7 +101,11 @@ if __name__ == "__main__":
         if vid:
             url = f"https://www.youtube.com/watch?v={vid}"
             print(f"Processing {name}...")
-
+            
+            # --- ADD THIS: A random delay to mimic human browsing ---
+            import random
+            time.sleep(random.randint(5, 10))
+            
             transcript_text = get_transcript(vid)
             label = "TRANSCRIPT" if transcript_text else "TITLE-ONLY"
 
