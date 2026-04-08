@@ -66,7 +66,7 @@ if __name__ == "__main__":
                 <link>{url}</link>
                 <description>{summary}</description>
                 <pubDate>{datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0000')}</pubDate>
-                <guid isPermaLink="false">{vid}</guid>
+                <guid isPermaLink="false">{vid}-{datetime.now().strftime('%Y%m%d%H')}</guid>
             </item>"""
             
             time.sleep(4) # Slight pause to stay safe
