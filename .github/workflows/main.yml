@@ -4,28 +4,26 @@ on:
     - cron: '0 */6 * * *'
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Allows the bot to save the feed.xml
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install Dependencies
-        run: pip install requests google-generativeai mailjet_rest
-
+      - name: Install Deps
+        run: pip install requests google-generativeai
       - name: Run Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
-          MAILJET_SECRET_KEY: ${{ secrets.MAILJET_SECRET_KEY }}
-          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
         run: python script.py
+      - name: Commit and Push Feed
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add feed.xml
+          git commit -m "Update RSS Feed" || exit 0
+          git push
