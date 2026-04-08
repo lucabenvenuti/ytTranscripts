@@ -7,27 +7,18 @@ import pytz
 import json
 import sys
 
-# --- 1. TIME GUARD (Handles Daylight Savings Automatically) ---
+# --- 1. TIME GUARD ---
 def should_run():
-    # Set timezone to Germany
     tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(tz)
     current_time = now.strftime("%H:%M")
-    
-    # Target windows (30-min buffer for GitHub Action delays)
-    targets = [
-        ("06:00", "06:30"),
-        ("13:30", "14:00"),
-        ("19:30", "20:00")
-    ]
-    
+    targets = [("06:00", "06:40"), ("13:30", "14:10"), ("19:30", "20:10")]
     for start, end in targets:
         if start <= current_time <= end:
             return True, current_time
     return False, current_time
 
-# --- 2. CONFIGURATION (Your 77 Channels) ---
-# The script will search for these names directly on YouTube.
+# --- 2. CONFIGURATION ---
 CHANNELS = [
     "Franchino Er Criminale", "Frank", "Il signor Franz", "Mochohf", 
     "Francesco Costa - Da Costa a Costa", "cavernadiplatone", "The Babylon Bee", 
@@ -53,31 +44,20 @@ CHANNELS = [
     "Psychology with Dr. Ana", "Mr. RIP"
 ]
 
-# --- 3. MAIN EXECUTION ---
 if __name__ == "__main__":
     is_time, german_now = should_run()
-    
     if not is_time:
-        print(f"Current German time is {german_now}. Not a scheduled slot. Exiting.")
+        print(f"Skipping: German time is {german_now}")
         sys.exit(0)
 
-    print(f"Starting scheduled run at {german_now} Germany time...")
-
-    # Load API Keys
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-    MAILJET_API_KEY = os.getenv("MAILJET_API_KEY")
-    MAILJET_SECRET_KEY = os.getenv("MAILJET_SECRET_KEY")
-    SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-    RECEIVER_EMAIL = "benvenutiluca@icloud.com"
-
-    # Setup Clients
-    genai.configure(api_key=GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel('gemini-pro')
-    mailjet = Client(auth=(MAILJET_API_KEY, MAILJET_SECRET_KEY), version='v3.1')
-
-    # Subject line for your email
-    subject = f"YouTube Intelligence Report - {german_now} (Berlin Time)"
+    # Validate Environment Variables
+    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+    MJ_KEY = os.getenv("MAILJET_API_KEY")
+    MJ_SEC = os.getenv("MAILJET_SECRET_KEY")
     
-    # --- LOGIC TO FETCH AND SUMMARIZE ---
-    # Here your script will loop through CHANNELS, search for each name,
-    # find the latest video, and send the summary.
+    if not all([GEMINI_KEY, MJ_KEY, MJ_SEC]):
+        print("Error: Missing API Keys in GitHub Secrets.")
+        sys.exit(1)
+
+    print(f"Starting run for {len(CHANNELS)} channels...")
+    # Add your video fetching and Gemini logic here
