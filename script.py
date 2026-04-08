@@ -1,6 +1,6 @@
 import os
 import requests
-import google.generativeai as genai
+from google import genai
 import re
 import time
 from datetime import datetime
@@ -32,9 +32,8 @@ def get_latest_vid(channel_id):
         return (None, None)
 
 if __name__ == "__main__":
-    # Setup Gemini
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Setup New Gemini Client
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     
     rss_items = ""
     
@@ -45,22 +44,20 @@ if __name__ == "__main__":
             print(f"Processing: {name}...")
             
             try:
-                # Better Prompt: Gives the AI the title so it has context even without the video file
+                # Using the new gemini-2.0-flash model
                 prompt = (
                     f"Summarize this YouTube video in 3 short bullet points in Italian.\n"
                     f"Channel: {name}\n"
                     f"Title: {v_title}\n"
-                    f"Link: {url}\n"
-                    "If you cannot access the transcript, use the title to describe what the video is likely about."
+                    f"Link: {url}"
                 )
                 
-                res = model.generate_content(prompt)
-                summary = res.text.strip().replace("\n", "<br>")
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash", 
+                    contents=prompt
+                )
+                summary = response.text.strip().replace("\n", "<br>")
                 
-                # If the AI response is empty
-                if not summary:
-                    summary = "AI generated an empty summary."
-                    
             except Exception as e:
                 print(f"Error for {name}: {e}")
                 summary = f"Summary failed. <a href='{url}'>Watch video here</a>"
@@ -74,19 +71,19 @@ if __name__ == "__main__":
                 <guid isPermaLink="false">{vid}</guid>
             </item>"""
             
-            # CRITICAL: Wait 5 seconds between channels to avoid "Summary failed" (Rate Limiting)
-            time.sleep(5)
+            # Pause to respect rate limits
+            time.sleep(4)
 
     rss_feed = f"""<?xml version="1.0" encoding="UTF-8" ?>
     <rss version="2.0">
     <channel>
         <title>YouTube Intelligence</title>
         <link>https://github.com/lucabenvenuti/ytTranscripts</link>
-        <description>AI Summaries of your favorite channels</description>
+        <description>AI Summaries</description>
         {rss_items}
     </channel>
     </rss>"""
 
     with open("feed.xml", "w", encoding="utf-8") as f:
         f.write(rss_feed)
-    print("Success: feed.xml updated.")
+    print("Success: feed.xml updated with Gemini 2.0")
