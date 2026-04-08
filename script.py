@@ -1,8 +1,42 @@
 import os
+import pytz
+from datetime import datetime
+import sys
+
+def should_run():
+    # Set timezone to Germany (handles Summer/Winter time automatically)
+    tz = pytz.timezone("Europe/Berlin")
+    now = datetime.now(tz)
+    
+    current_time = now.strftime("%H:%M")
+    
+    # Define your target windows (allowing a 30-min window for GitHub delay)
+    # We check if the current time falls within these starts
+    targets = [
+        ("06:00", "06:30"),
+        ("13:30", "14:00"),
+        ("19:30", "20:00")
+    ]
+    
+    for start, end in targets:
+        if start <= current_time <= end:
+            print(f"Time matches: {current_time}. Starting bot...")
+            return True
+            
+    print(f"Current German time is {current_time}. Not a scheduled slot. Exiting.")
+    return False
+
+if __name__ == "__main__":
+    if not should_run():
+        sys.exit(0) # Exit silently without error
+    
+    # --- YOUR ACTUAL BOT LOGIC STARTS HERE ---
+    # (Rest of the script: CHANNELS, Gemini, Mailjet, etc.)
+
+
 import requests
 import google.generativeai as genai
 from mailjet_rest import Client
-import datetime
 import json
 
 # --- CONFIGURATION ---
