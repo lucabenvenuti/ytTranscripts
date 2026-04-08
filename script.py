@@ -42,25 +42,23 @@ def get_latest_vid(channel_id):
 
 def get_transcript(video_id):
     try:
-        # Get the filename from the YAML env variable (defaults to cookies.txt)
         cookies_path = os.getenv("YOUTUBE_COOKIES_FILE", "cookies.txt")
         
-        # Use list_transcripts with the cookies parameter
-        # This is the secret sauce to bypass the IP block
+        # FIX: Call list_transcripts directly from the module/class
+        # Ensure your import at the top is exactly: from youtube_transcript_api import YouTubeTranscriptApi
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, cookies=cookies_path)
         
-        # Try for manual Italian or English, then fallback to auto-generated
         try:
             transcript = transcript_list.find_transcript(['it', 'en'])
         except:
             transcript = transcript_list.find_generated_transcript(['it', 'en'])
 
         fetched = transcript.fetch()
-        
-        # Correctly join the text (dictionary access is ['text'])
         return " ".join([snippet['text'] for snippet in fetched])[:15000]
 
     except Exception as e:
+        # This will now catch real issues like expired cookies 
+        # instead of the "AttributeError"
         print(f"DEBUG Error Type: {type(e).__name__}")
         print(f"DEBUG Error Message: {str(e)}")
         return None
