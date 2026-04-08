@@ -1,8 +1,12 @@
 name: YT Summarizer
 on:
   schedule:
-    - cron: '0 */6 * * *' # Runs every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
-  workflow_dispatch: # Allows you to run it manually for testing
+    - cron: '0 */6 * * *' # Every 6 hours
+  workflow_dispatch: # Allows manual test run
+
+env:
+  # This kills the deprecation warning
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   run-bot:
@@ -12,10 +16,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
       - name: Install Deps
-        run: pip install requests google-generativeai mailjet_rest pytz
-      - name: Run
+        run: pip install requests google-generativeai mailjet_rest
+      - name: Run Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MAILJET_API_KEY: ${{ secrets.MAILJET_API_KEY }}
