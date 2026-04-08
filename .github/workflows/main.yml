@@ -25,6 +25,9 @@ jobs:
           cat <<EOF > cookies.txt
           ${{ secrets.YOUTUBE_COOKIES }}
           EOF
+
+      - name: Verify Cookie Format
+        run: head -n 5 cookies.txt && grep -P '\t' cookies.txt | wc -l
       
       - name: Run Bot
         env:
