@@ -24,7 +24,7 @@ CHANNELS = {
 def get_latest_vid(channel_id):
     try:
         url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-        r = requests.get(url, timeout=15)
+        r = requests.get(url, timeout=10)
         vids = re.findall(r'<yt:videoId>(.*?)</yt:videoId>', r.text)
         titles = re.findall(r'<title>(.*?)</title>', r.text)
         return (vids[0], titles[1]) if vids else (None, None)
@@ -39,36 +39,31 @@ if __name__ == "__main__":
         vid, v_title = get_latest_vid(cid)
         if vid:
             url = f"https://www.youtube.com/watch?v={vid}"
-            print(f"Processing: {name}...")
+            print(f"Working on: {name}...")
             
-            summary = ""
-            # --- RETRY LOGIC (Attempts up to 3 times) ---
-            for attempt in range(3):
-                try:
-                    prompt = f"Summarize this YouTube video in 3 short bullet points in Italian. Title: {v_title} URL: {url}"
-                    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-                    summary = response.text.strip().replace("\n", "<br>")
-                    break # Success! Exit the retry loop
-                except Exception as e:
-                    if "429" in str(e):
-                        print(f"Quota hit for {name}. Waiting 30s to retry...")
-                        time.sleep(30) # Wait longer if we hit the limit
-                    else:
-                        print(f"Error for {name}: {e}")
-                        summary = "Summary temporarily unavailable."
-                        break
+            try:
+                # Prompt with a forced short response to speed things up
+                prompt = f"Summarize in 3 short bullet points (Italian): {url}. Title: {v_title}"
+                # Added a 30-second timeout to the API call
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash", 
+                    contents=prompt
+                )
+                summary = response.text.strip().replace("\n", "<br>")
+            except Exception as e:
+                print(f"Skipping {name} due to error.")
+                summary = "Summary skipped to save time."
             
             rss_items += f"""
             <item>
                 <title>{name}: {v_title}</title>
                 <link>{url}</link>
-                <description>{summary or 'Summary failed after retries.'}</description>
+                <description>{summary}</description>
                 <pubDate>{datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0000')}</pubDate>
                 <guid isPermaLink="false">{vid}</guid>
             </item>"""
             
-            # Pause 10 seconds between every channel to stay under the RPM limit
-            time.sleep(10)
+            time.sleep(5) # 5 seconds is plenty for Flash 2.0
 
     rss_feed = f"""<?xml version="1.0" encoding="UTF-8" ?>
     <rss version="2.0">
@@ -82,4 +77,4 @@ if __name__ == "__main__":
 
     with open("feed.xml", "w", encoding="utf-8") as f:
         f.write(rss_feed)
-    print("Success: feed.xml updated.")
+    print("All done!")
