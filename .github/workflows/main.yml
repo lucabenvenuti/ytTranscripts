@@ -20,6 +20,9 @@ jobs:
       - name: Install Dependencies
         run: pip install requests google-genai youtube-transcript-api
 
+      - name: Write cookies file
+        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+      
       - name: Run Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
