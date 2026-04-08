@@ -21,7 +21,10 @@ jobs:
         run: pip install requests google-genai youtube-transcript-api
 
       - name: Write cookies file
-        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+        run: |
+          cat <<EOF > cookies.txt
+          ${{ secrets.YOUTUBE_COOKIES }}
+          EOF
       
       - name: Run Bot
         env:
