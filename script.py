@@ -35,24 +35,30 @@ if __name__ == "__main__":
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
     rss_items = ""
     
+    # Use the 3.1 Flash-Lite model which has a higher 2026 Free Quota
+    MODEL_NAME = "gemini-3.1-flash-lite-preview"
+    
     for name, cid in CHANNELS.items():
         vid, v_title = get_latest_vid(cid)
         if vid:
             url = f"https://www.youtube.com/watch?v={vid}"
-            print(f"Working on: {name}...")
+            print(f"Processing {name}...")
             
             try:
-                # Prompt with a forced short response to speed things up
-                prompt = f"Summarize in 3 short bullet points (Italian): {url}. Title: {v_title}"
-                # Added a 30-second timeout to the API call
+                prompt = f"Summarize in 3 bullet points (Italian): {v_title}. Link: {url}"
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash", 
+                    model=MODEL_NAME, 
                     contents=prompt
                 )
                 summary = response.text.strip().replace("\n", "<br>")
             except Exception as e:
-                print(f"Skipping {name} due to error.")
-                summary = "Summary skipped to save time."
+                error_msg = str(e)
+                if "429" in error_msg:
+                    print(f"!!! QUOTA EXCEEDED for {name}. Stopping AI calls for today.")
+                    summary = "Daily AI limit reached. Watch video for details."
+                else:
+                    print(f"Error for {name}: {error_msg}")
+                    summary = "AI processing error."
             
             rss_items += f"""
             <item>
@@ -63,7 +69,7 @@ if __name__ == "__main__":
                 <guid isPermaLink="false">{vid}</guid>
             </item>"""
             
-            time.sleep(5) # 5 seconds is plenty for Flash 2.0
+            time.sleep(4) # Slight pause to stay safe
 
     rss_feed = f"""<?xml version="1.0" encoding="UTF-8" ?>
     <rss version="2.0">
@@ -77,4 +83,4 @@ if __name__ == "__main__":
 
     with open("feed.xml", "w", encoding="utf-8") as f:
         f.write(rss_feed)
-    print("All done!")
+    print("Success: Feed updated.")
