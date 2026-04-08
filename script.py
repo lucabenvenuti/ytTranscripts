@@ -42,18 +42,20 @@ def get_latest_vid(channel_id):
 
 def get_transcript(video_id):
     try:
-        # 1. Path to the file created by YAML
-        cookies_path = os.getenv("YOUTUBE_COOKIES_FILE", "cookies.txt")
+        # --- CRITICAL DEBUGS ---
+        import youtube_transcript_api
+        print(f"DEBUG: Library Version: {getattr(youtube_transcript_api, '__version__', 'unknown')}")
+        print(f"DEBUG: Library Path: {youtube_transcript_api.__file__}")
         
-        # Debug check: Does the file exist?
+        cookies_path = os.getenv("YOUTUBE_COOKIES_FILE", "cookies.txt")
         if os.path.exists(cookies_path):
-            print(f"--- Cookie file found at {cookies_path} ---")
+            print(f"DEBUG: Cookie file found at {cookies_path}")
         else:
-            print(f"--- WARNING: Cookie file NOT found at {cookies_path} ---")
+            print(f"DEBUG: WARNING - Cookie file NOT found at {cookies_path}")
+        # -----------------------
 
-        # 2. Call the STATIC method (No parentheses after YouTubeTranscriptApi)
-        # This is the line that was causing the AttributeError
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, cookies=cookies_path)
+        # Use the explicit module.class path
+        transcript_list = youtube_transcript_api.YouTubeTranscriptApi.list_transcripts(video_id, cookies=cookies_path)
         
         try:
             transcript = transcript_list.find_transcript(['it', 'en'])
@@ -64,8 +66,6 @@ def get_transcript(video_id):
         return " ".join([snippet['text'] for snippet in fetched])[:15000]
 
     except Exception as e:
-        # If this runs, it means the AttributeError is GONE, 
-        # and we are dealing with real YouTube blocks
         print(f"DEBUG Error Type: {type(e).__name__}")
         print(f"DEBUG Error Message: {str(e)}")
         return None
