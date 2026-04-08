@@ -1,18 +1,21 @@
 name: YT Summarizer
 on:
   schedule:
-    - cron: '0 */6 * * *' # Ogni 6 ore
-  workflow_dispatch: # Permette l'avvio manuale
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # This removes the warning
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    permissions: # Permessi aggiuntivi per sicurezza
+    permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4 # Versione aggiornata
+      - uses: actions/checkout@v4
       - name: Setup Python
-        uses: actions/setup-python@v5 # Versione aggiornata
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       - name: Deps
