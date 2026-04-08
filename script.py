@@ -60,13 +60,14 @@ if __name__ == "__main__":
                     print(f"Error for {name}: {error_msg}")
                     summary = "AI processing error."
             
+            # Change the rss_items block in your script.py to this:
             rss_items += f"""
             <item>
                 <title>{name}: {v_title}</title>
                 <link>{url}</link>
-                <description>{summary}</description>
+                <description><![CDATA[{summary}]]></description>
                 <pubDate>{datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0000')}</pubDate>
-                <guid isPermaLink="false">{vid}-{datetime.now().strftime('%Y%m%d%H')}</guid>
+                <guid isPermaLink="false">{vid}-{datetime.now().strftime('%Y%m%d')}</guid>
             </item>"""
             
             time.sleep(4) # Slight pause to stay safe
