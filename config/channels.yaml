@@ -103,3 +103,18 @@ channels:
     id: "UCt_NLJ4McJlCyYM-dSPRo7Q"
     language: "english"
     enabled: true
+
+  - name: "Baixu"
+    id: "UC3c_mdHnDKOAkddUyjdvIxg"
+    language: "english"
+    enabled: true
+
+  - name: "JoelEmilia"
+    id: "UCbn5xzRrAOY9DWJlbyPBsvg"
+    language: "english"
+    enabled: true
+
+  - name: "ArmchairHistorian"
+    id: "UCeUJFQ0D9qs6aVNyUt9fkeQ"
+    language: "english"
+    enabled: true
