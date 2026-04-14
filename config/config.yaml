@@ -94,14 +94,17 @@ summarization:
   temperature: 0.1
   max_output_tokens: 3072
 
-  max_chunk_chars: 28000
+  max_chunk_chars: 18000
   overlap_chars: 400
-  max_chunks_per_transcript: 5
+  max_chunks_per_transcript: 4
   combine_batch_size: 10
-  retries_per_call: 1
+  retries_per_call: 3
+  retry_backoff_seconds: 8.0
+  retry_backoff_multiplier: 2.0
+  retry_backoff_max_seconds: 90.0
 
-  requests_per_minute_limit: 14
-  min_request_interval_seconds: 4.2
+  requests_per_minute_limit: 10
+  min_request_interval_seconds: 6.5
 
 pdf:
   local_output_dir: C:\YTSystem\data\pdf
