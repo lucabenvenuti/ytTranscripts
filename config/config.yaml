@@ -85,6 +85,8 @@ summarization:
   provider: gemini
   base_url: https://generativelanguage.googleapis.com/v1beta
   model_name: gemini-3.1-flash-lite-preview
+  fallback_model_name: gemini-2.5-flash
+  fallback_cooldown_seconds: 60
   api_key_env_var: GEMINI_API_KEY
   api_key: ""
 

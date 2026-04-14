@@ -15,6 +15,8 @@ from pathlib import Path
 class GeminiSettings:
     base_url: str
     model_name: str
+    fallback_model_name: str
+    fallback_cooldown_seconds: float
     api_key: str
     timeout: float | None
     prompt_version: str
@@ -71,6 +73,18 @@ def _extract_quota_metric(error_body: str) -> str | None:
 def _is_quota_exceeded(error_body: str) -> bool:
     normalized = error_body.casefold()
     return "quota exceeded" in normalized or "billing details" in normalized
+
+
+def _is_high_demand_unavailable(error_body: str) -> bool:
+    normalized = error_body.casefold()
+    return "currently experiencing high demand" in normalized or "spikes in demand are usually temporary" in normalized
+
+
+class HighDemandModelError(RuntimeError):
+    def __init__(self, model_name: str, stage_label: str):
+        super().__init__(f"Model {model_name} is experiencing high demand at stage {stage_label}")
+        self.model_name = model_name
+        self.stage_label = stage_label
 
 
 def _split_text_into_chunks(
@@ -195,6 +209,8 @@ class GeminiSummarizer:
         self.settings = GeminiSettings(
             base_url=str(sum_cfg.get("base_url", "https://generativelanguage.googleapis.com/v1beta")).rstrip("/"),
             model_name=str(sum_cfg.get("model_name", "gemini-3.1-flash-lite-preview")),
+            fallback_model_name=str(sum_cfg.get("fallback_model_name", "gemini-2.5-flash")).strip(),
+            fallback_cooldown_seconds=float(sum_cfg.get("fallback_cooldown_seconds", 60.0)),
             api_key=api_key,
             timeout=timeout_value,
             prompt_version=str(sum_cfg.get("prompt_version", "v3")),
@@ -224,7 +240,7 @@ class GeminiSummarizer:
             self.logger.warning("Gemini API key is missing")
             return False
 
-        url = f"{self.settings.base_url}/models/{self.settings.model_name}:generateContent"
+        url = self._model_url(self.settings.model_name)
         payload = {
             "contents": [
                 {
@@ -281,6 +297,9 @@ class GeminiSummarizer:
             return allowed
 
         return min(base_timeout, allowed)
+
+    def _model_url(self, model_name: str) -> str:
+        return f"{self.settings.base_url}/models/{model_name}:generateContent"
 
     def _post_json(self, *, url: str, payload: dict, timeout: float | None) -> str:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -371,9 +390,11 @@ class GeminiSummarizer:
         prompt: str,
         stage_label: str,
         hard_deadline: datetime | None = None,
+        model_name: str | None = None,
     ) -> str:
         last_error = None
-        url = f"{self.settings.base_url}/models/{self.settings.model_name}:generateContent"
+        selected_model = (model_name or self.settings.model_name).strip() or self.settings.model_name
+        url = self._model_url(selected_model)
 
         payload = {
             "contents": [
@@ -395,7 +416,7 @@ class GeminiSummarizer:
 
                 self.logger.info(
                     "Sending transcript to Gemini model=%s timeout=%s prompt_version=%s stage=%s attempt=%s/%s",
-                    self.settings.model_name,
+                    selected_model,
                     timeout,
                     self.settings.prompt_version,
                     stage_label,
@@ -415,6 +436,7 @@ class GeminiSummarizer:
                 retry_after_seconds = _parse_retry_after_seconds(body)
                 quota_metric = _extract_quota_metric(body)
                 quota_exceeded = ex.code == 429 and _is_quota_exceeded(body)
+                high_demand_unavailable = ex.code == 503 and _is_high_demand_unavailable(body)
                 self.logger.warning(
                     "Gemini HTTP error at stage=%s attempt=%s/%s: %s %s",
                     stage_label,
@@ -423,6 +445,8 @@ class GeminiSummarizer:
                     ex,
                     body[:500],
                 )
+                if high_demand_unavailable and selected_model == self.settings.model_name and self.settings.fallback_model_name:
+                    raise HighDemandModelError(selected_model, stage_label)
                 if attempt < self.settings.retries_per_call:
                     if quota_exceeded and retry_after_seconds is None:
                         self.logger.warning(
@@ -453,6 +477,46 @@ class GeminiSummarizer:
 
         assert last_error is not None
         raise last_error
+
+    def _call_with_summary_model_fallback(
+        self,
+        *,
+        prompt: str,
+        stage_label: str,
+        hard_deadline: datetime | None,
+        active_model: str,
+    ) -> tuple[str, str, bool]:
+        try:
+            return (
+                self._call_gemini(
+                    prompt=prompt,
+                    stage_label=stage_label,
+                    hard_deadline=hard_deadline,
+                    model_name=active_model,
+                ),
+                active_model,
+                False,
+            )
+        except HighDemandModelError:
+            fallback_model = self.settings.fallback_model_name.strip()
+            if not fallback_model or active_model == fallback_model:
+                raise
+            self.logger.warning(
+                "Primary Gemini model %s is under high demand at stage=%s. Falling back to %s for the rest of this summary.",
+                active_model,
+                stage_label,
+                fallback_model,
+            )
+            return (
+                self._call_gemini(
+                    prompt=prompt,
+                    stage_label=stage_label,
+                    hard_deadline=hard_deadline,
+                    model_name=fallback_model,
+                ),
+                fallback_model,
+                True,
+            )
 
     def _build_chunk_prompt(
         self,
@@ -640,10 +704,11 @@ Draft:
         )
 
         self.logger.info(
-            "Prepared %s chunk(s) for title=%s model=%s deadline=%s rpm_limit=%s min_interval=%.2fs transcript_language=%s",
+            "Prepared %s chunk(s) for title=%s primary_model=%s fallback_model=%s deadline=%s rpm_limit=%s min_interval=%.2fs transcript_language=%s",
             len(chunks),
             title,
             self.settings.model_name,
+            self.settings.fallback_model_name,
             hard_deadline.isoformat() if hard_deadline else None,
             self.settings.requests_per_minute_limit,
             self.settings.min_request_interval_seconds,
@@ -651,6 +716,8 @@ Draft:
         )
 
         partial_summaries: list[str] = []
+        active_model = self.settings.model_name
+        used_fallback_for_summary = False
 
         for idx, chunk in enumerate(chunks, start=1):
             remaining = _seconds_until(hard_deadline)
@@ -665,11 +732,13 @@ Draft:
                 total_chunks=len(chunks),
                 chunk_text=chunk,
             )
-            partial = self._call_gemini(
+            partial, active_model, used_fallback_now = self._call_with_summary_model_fallback(
                 prompt=prompt,
                 stage_label=f"chunk-{idx}-of-{len(chunks)}",
                 hard_deadline=hard_deadline,
+                active_model=active_model,
             )
+            used_fallback_for_summary = used_fallback_for_summary or used_fallback_now
             partial_summaries.append(partial.strip())
 
         remaining = _seconds_until(hard_deadline)
@@ -683,11 +752,14 @@ Draft:
             partial_summaries=partial_summaries,
         )
 
-        final_text = self._call_gemini(
+        final_text, active_model, used_fallback_now = self._call_with_summary_model_fallback(
             prompt=final_prompt,
             stage_label="final-combine",
             hard_deadline=hard_deadline,
-        ).strip()
+            active_model=active_model,
+        )
+        used_fallback_for_summary = used_fallback_for_summary or used_fallback_now
+        final_text = final_text.strip()
 
         if not self._is_normalized_final_format(final_text):
             self.logger.info("Final summary format was inconsistent, running repair pass")
@@ -697,14 +769,33 @@ Draft:
                 transcript_language=transcript_language,
                 draft_summary=final_text,
             )
-            final_text = self._call_gemini(
+            final_text, active_model, used_fallback_now = self._call_with_summary_model_fallback(
                 prompt=repair_prompt,
                 stage_label="repair-format",
                 hard_deadline=hard_deadline,
-            ).strip()
+                active_model=active_model,
+            )
+            used_fallback_for_summary = used_fallback_for_summary or used_fallback_now
+            final_text = final_text.strip()
 
         if not self._is_normalized_final_format(final_text):
             raise RuntimeError("Gemini returned a non-normalized final summary format")
+
+        if used_fallback_for_summary and self.settings.fallback_cooldown_seconds > 0:
+            cooldown = self.settings.fallback_cooldown_seconds
+            remaining = _seconds_until(hard_deadline)
+            if remaining is None:
+                effective_cooldown = cooldown
+            else:
+                effective_cooldown = min(cooldown, max(0.0, remaining - self.settings.deadline_safety_seconds))
+            if effective_cooldown > 0:
+                self.logger.info(
+                    "Summary completed with fallback model %s. Cooling down %.2f seconds before the next summary retries %s.",
+                    active_model,
+                    effective_cooldown,
+                    self.settings.model_name,
+                )
+                time.sleep(effective_cooldown)
 
         return final_text
 
