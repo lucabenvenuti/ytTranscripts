@@ -59,6 +59,72 @@ def delete_lock(lock_path: str) -> None:
         p.unlink()
 
 
+def cleanup_old_generated_files(config: dict, logger, now: datetime) -> None:
+    retention_cfg = config.get("retention", {})
+    if not bool(retention_cfg.get("enabled", True)):
+        return
+
+    max_age_days = int(retention_cfg.get("max_age_days", 7))
+    if max_age_days < 0:
+        return
+
+    cutoff = now - timedelta(days=max_age_days)
+    paths_cfg = config.get("paths", {})
+    protected_files = {
+        str(Path(paths_cfg.get("collector_lock", ""))).lower(),
+        str(Path(paths_cfg.get("summary_lock", ""))).lower(),
+    }
+
+    directory_keys = [
+        "collector_reports_dir",
+        "summary_reports_dir",
+        "collector_plots_dir",
+        "summary_plots_dir",
+        "collector_logs_dir",
+        "summary_logs_dir",
+        "pdf_dir",
+        "temp_dir",
+    ]
+
+    if not bool(config.get("transcript_collector", {}).get("keep_audio_cache", True)):
+        directory_keys.append("audio_cache_dir")
+
+    removed_count = 0
+
+    for key in directory_keys:
+        raw_dir = paths_cfg.get(key)
+        if not raw_dir:
+            continue
+
+        directory = Path(raw_dir)
+        if not directory.exists() or not directory.is_dir():
+            continue
+
+        for file_path in directory.rglob("*"):
+            if not file_path.is_file():
+                continue
+            if str(file_path).lower() in protected_files:
+                continue
+
+            try:
+                modified_at = datetime.fromtimestamp(file_path.stat().st_mtime)
+            except OSError:
+                continue
+
+            if modified_at >= cutoff:
+                continue
+
+            try:
+                file_path.unlink()
+                removed_count += 1
+                logger.info("Deleted old generated file: %s", file_path)
+            except Exception as ex:
+                logger.warning("Failed deleting old generated file %s: %s", file_path, ex)
+
+    if removed_count:
+        logger.info("Cleanup removed %s generated file(s) older than %s days", removed_count, max_age_days)
+
+
 def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -106,6 +172,7 @@ def main() -> int:
 
     try:
         ensure_dirs(config)
+        cleanup_old_generated_files(config, logger, local_now())
         conn = open_db(config["paths"]["db_path"])
         initialize_schema_if_needed(conn, config["paths"]["schema_path"])
 

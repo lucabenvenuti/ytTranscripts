@@ -123,3 +123,8 @@ distribution:
 logging:
   level: INFO
   rotate_daily: true
+
+retention:
+  enabled: true
+  max_age_days: 7
+
