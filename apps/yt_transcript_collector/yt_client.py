@@ -4,6 +4,7 @@ import json
 import random
 import subprocess
 import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -142,6 +143,8 @@ class YTClient:
         self.user_agent = yt_cfg.get("user_agent", "Mozilla/5.0")
         self.referer = yt_cfg.get("referer", "https://www.youtube.com/")
         self.rss_max_items = int(yt_cfg.get("rss_max_items", 2))
+        self.rss_retry_count = int(yt_cfg.get("rss_retry_count", 2))
+        self.rss_retry_base_seconds = float(yt_cfg.get("rss_retry_base_seconds", 2.0))
 
     def _base_ytdlp_args(self) -> list[str]:
         args = ["python", "-m", "yt_dlp"]
@@ -205,8 +208,47 @@ class YTClient:
             },
         )
 
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            xml_bytes = resp.read()
+        last_error: Exception | None = None
+        xml_bytes: bytes | None = None
+
+        for attempt in range(1, self.rss_retry_count + 2):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    xml_bytes = resp.read()
+                break
+            except urllib.error.HTTPError as ex:
+                last_error = ex
+                retryable = ex.code in {404, 429, 500, 502, 503, 504}
+                if not retryable or attempt > self.rss_retry_count:
+                    raise
+                delay = self.rss_retry_base_seconds * attempt
+                self.logger.warning(
+                    "RSS fetch failed for %s with HTTP %s on attempt %s/%s. Retrying in %.2f seconds.",
+                    channel_name,
+                    ex.code,
+                    attempt,
+                    self.rss_retry_count + 1,
+                    delay,
+                )
+                time.sleep(delay)
+            except Exception as ex:
+                last_error = ex
+                if attempt > self.rss_retry_count:
+                    raise
+                delay = self.rss_retry_base_seconds * attempt
+                self.logger.warning(
+                    "RSS fetch failed for %s on attempt %s/%s: %s. Retrying in %.2f seconds.",
+                    channel_name,
+                    attempt,
+                    self.rss_retry_count + 1,
+                    ex,
+                    delay,
+                )
+                time.sleep(delay)
+
+        if xml_bytes is None:
+            assert last_error is not None
+            raise last_error
 
         root = ET.fromstring(xml_bytes)
 

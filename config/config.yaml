@@ -51,6 +51,8 @@ paths:
 
 yt:
   rss_max_items: 2
+  rss_retry_count: 2
+  rss_retry_base_seconds: 2.0
   cookies_path: C:\YTSystem\config\cookies.txt
   use_cookies_if_present: true
   user_agent: Mozilla/5.0
