@@ -144,3 +144,8 @@ channels:
     language: "english"
     enabled: true
 
+  - name: "MorePerfectUnion"
+    id: "UCehBVAPy-bxmnbNARF-_tvA"
+    language: "english"
+    enabled: true
+

@@ -13,8 +13,8 @@ transcript_collector:
   keep_audio_cache: true
   plot_on_incomplete: true
   report_json: true
-  request_pause_min_seconds: 4.0
-  request_pause_max_seconds: 8.0
+  request_pause_min_seconds: 6.0
+  request_pause_max_seconds: 12.0
 
 summary_pdf_generator:
   enabled: true
@@ -51,8 +51,8 @@ paths:
 
 yt:
   rss_max_items: 2
-  rss_retry_count: 2
-  rss_retry_base_seconds: 2.0
+  rss_retry_count: 3
+  rss_retry_base_seconds: 3.0
   cookies_path: C:\YTSystem\config\cookies.txt
   use_cookies_if_present: true
   user_agent: Mozilla/5.0
@@ -61,13 +61,13 @@ yt:
     - it
     - en
   allow_any_subtitle_fallback: true
-  max_429_retries: 3
-  post_429_cooldown_seconds: 30.0
-  base_interval_seconds: 4.0
+  max_429_retries: 4
+  post_429_cooldown_seconds: 45.0
+  base_interval_seconds: 6.0
   max_interval_seconds: 240.0
   success_decay: 0.90
   min_penalty_seconds: 0.0
-  penalty_step_seconds: 15.0
+  penalty_step_seconds: 20.0
   max_penalty_seconds: 360.0
   multiplier_on_429: 2.0
   max_multiplier: 12.0
@@ -75,7 +75,7 @@ yt:
   recovery_success_threshold: 4
 
   light_request_weight: 1.0
-  heavy_request_weight: 3.0
+  heavy_request_weight: 4.0
 
 transcription:
   provider: ffmpeg_whisper
