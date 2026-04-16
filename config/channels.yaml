@@ -139,3 +139,8 @@ channels:
     language: "english"
     enabled: true
 
+  - name: "TED"
+    id: "UCAuUUnT6oDeKwE6v1NGQxug"
+    language: "english"
+    enabled: true
+
