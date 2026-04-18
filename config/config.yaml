@@ -51,7 +51,7 @@ paths:
 
 yt:
   rss_max_items: 2
-  rss_retry_count: 10
+  rss_retry_count: 2
   rss_retry_base_seconds: 5.0
   rss_max_404_warnings: 3
   discovery_fallback_to_ytdlp: true
