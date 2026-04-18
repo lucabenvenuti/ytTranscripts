@@ -4,128 +4,91 @@ A local system for downloading, processing, and generating transcripts, summarie
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 C:\YTSystem\
-├─ src/                 # core logic
-├─ scripts/             # entry scripts / automation
-├─ config/              # configuration files
-├─ data/
-│  ├─ transcripts/
-│  ├─ summaries/
-│  ├─ audio_cache/
-│  ├─ pdf/
-│  ├─ reports/
-│  ├─ plots/
-│  └─ logs/
-├─ temp/                # temporary processing
-├─ db/
-│  └─ yt_pipeline.db
+├─ apps\
+│  ├─ yt_transcript_collector\
+│  └─ yt_summary_pdf_generator\
+├─ config\
+├─ data\
+│  ├─ transcripts\
+│  ├─ summaries\
+│  ├─ audio_cache\
+│  ├─ pdf\
+│  ├─ reports\
+│  ├─ plots\
+│  └─ logs\
+├─ temp\
+├─ db\
+├─ requirements.txt
+├─ run_transcript_collector.bat
+└─ run_summary_pdf_generator.bat
 ```
 
 ---
 
-## ⚙️ External Tools
+## Python Runtime
 
-Installed separately in:
+This project is expected to use:
 
 ```text
-C:\Tools\
+C:\Tools\python\Scripts\python.exe
 ```
 
-Required:
+Create the runtime and install dependencies with:
 
-* Python 3.x
-* yt-dlp
-* ffmpeg
-* (optional) Whisper / faster-whisper
-
-Make sure they are available in PATH.
-
----
-
-## 🚀 Setup
-
-```bash
-git clone https://github.com/lucabenvenuti/ytTranscripts.git C:\YTSystem
-cd C:\YTSystem
-```
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
+```cmd
+python -m venv C:\Tools\python
+C:\Tools\python\Scripts\python.exe -m pip install --upgrade pip
+C:\Tools\python\Scripts\python.exe -m pip install -r C:\YTSystem\requirements.txt
 ```
 
 ---
 
-## ▶️ Run the system
+## Run The Apps
 
-Example:
+Transcript collector:
 
-```bash
-python scripts/run_pipeline.py <youtube_url>
+```cmd
+C:\YTSystem\run_transcript_collector.bat
+```
+
+Summary generator:
+
+```cmd
+C:\YTSystem\run_summary_pdf_generator.bat
+```
+
+You can also run them directly with the pinned runtime:
+
+```cmd
+C:\Tools\python\Scripts\python.exe C:\YTSystem\apps\yt_transcript_collector\main.py
+C:\Tools\python\Scripts\python.exe C:\YTSystem\apps\yt_summary_pdf_generator\main.py
 ```
 
 ---
 
-## 🔄 Workflow
+## Updating Other Code
 
-1. Download audio → `data/audio_cache/`
-2. Generate transcript → `data/transcripts/`
-3. Generate summary → `data/summaries/`
-4. Export PDF → `data/pdf/`
-5. Generate reports/plots → `data/reports/`, `data/plots/`
+When you add another app, follow the same pattern:
+
+1. Put new Python dependencies in `C:\YTSystem\requirements.txt`.
+2. Create a small `.bat` launcher that calls `C:\Tools\python\Scripts\python.exe` explicitly.
+3. Point Task Scheduler to that launcher instead of plain `python`.
+4. If the app loads config or channels, keep it runnable from `C:\YTSystem` and avoid hidden user-specific paths.
+
+Avoid using plain `python` or plain `pip` in scheduled jobs, because they may resolve to a different interpreter than `C:\Tools\python`.
 
 ---
 
-## 🧹 Reset System
+## Reset System
 
 Full reset is handled via:
 
 ```text
-scripts/reset.bat
+C:\YTSystem\reset_all.bat
 ```
 
-This removes:
-
-* all generated data
-* logs
-* temp files
-* database
-
-System rebuilds everything on next run.
-
----
-
-## ⚠️ Important
-
-The following are **NOT versioned**:
-
-* transcripts
-* summaries
-* audio/video files
-* PDFs
-* logs
-* database
-
-Only code + configuration are tracked.
-
----
-
-## 🧠 Design Principles
-
-* Reproducible from scratch
-* All outputs are disposable
-* Clear separation: code vs data vs tools
-* Reset = clean state
-
----
-
-## 📌 Future
-
-* CLI interface
-* scheduling system
-* API layer
-* UI dashboard
+This removes generated data, logs, temp files, and the database. Config files are left intact.
