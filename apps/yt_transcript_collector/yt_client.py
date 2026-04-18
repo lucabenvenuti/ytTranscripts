@@ -475,7 +475,8 @@ class YTClient:
         args = base_args + [
             "--skip-download",
             "--sub-langs", ",".join(languages),
-            "--sub-format", "vtt",
+            "--sub-format", "vtt/best",
+            "--convert-subs", "vtt",
             "-o", f"{out_base}.%(ext)s",
             video_url,
         ]
@@ -500,5 +501,27 @@ class YTClient:
 
         parent = Path(out_base).parent
         stem = Path(out_base).name
-        files = sorted(parent.glob(f"{stem}*.vtt"))
-        return files[0] if files else None
+        vtt_files = sorted(parent.glob(f"{stem}*.vtt"))
+        if vtt_files:
+            return vtt_files[0]
+
+        fallback_patterns = ["*.srv1", "*.srv2", "*.srv3", "*.ttml", "*.json3"]
+        fallback_files: list[Path] = []
+        for suffix_pattern in fallback_patterns:
+            fallback_files.extend(sorted(parent.glob(f"{stem}{suffix_pattern}")))
+
+        combined_output = ((cp.stdout or "") + "\n" + (cp.stderr or "")).strip()
+        if fallback_files:
+            self.logger.warning(
+                "Subtitle download produced non-VTT files for %s but no .vtt after conversion: %s | output=%s",
+                video_url,
+                ", ".join(str(p) for p in fallback_files),
+                combined_output,
+            )
+        else:
+            self.logger.warning(
+                "Subtitle download completed without creating subtitle files for %s | output=%s",
+                video_url,
+                combined_output,
+            )
+        return None
