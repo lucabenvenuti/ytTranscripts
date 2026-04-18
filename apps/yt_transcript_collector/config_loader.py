@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 
 try:
@@ -139,13 +141,33 @@ def _fallback_safe_load(text: str) -> dict:
     return data
 
 
+def _expand_env_placeholders(value: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        key = match.group(1)
+        return os.environ.get(key, match.group(0))
+
+    return re.sub(r"\$\{([^}]+)\}", repl, value)
+
+
+def _expand_value(value):
+    if isinstance(value, str):
+        expanded = _expand_env_placeholders(value)
+        return os.path.expanduser(os.path.expandvars(expanded))
+    if isinstance(value, list):
+        return [_expand_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _expand_value(item) for key, item in value.items()}
+    return value
+
+
 def load_yaml(path: str | Path) -> dict:
     p = Path(path)
     text = p.read_text(encoding="utf-8")
     if yaml is not None:
         data = yaml.safe_load(text) or {}
-        return data
-    return _fallback_safe_load(text)
+    else:
+        data = _fallback_safe_load(text)
+    return _expand_value(data)
 
 
 def load_config(config_path: str | Path) -> dict:

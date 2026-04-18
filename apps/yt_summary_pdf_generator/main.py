@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import platform
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -30,7 +31,18 @@ from report_writer import write_json_report
 from summarizer import GeminiSummarizer
 
 
-CONFIG_PATH = r"C:\YTSystem\config\config.yaml"
+def resolve_repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def resolve_config_path() -> Path:
+    config_dir = resolve_repo_root() / "config"
+    if platform.system() == "Darwin":
+        return config_dir / "config.mac.yaml"
+    return config_dir / "config.yaml"
+
+
+CONFIG_PATH = resolve_config_path()
 
 
 def local_now() -> datetime:

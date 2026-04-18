@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import platform
 import random
 import sys
 import time
@@ -28,8 +29,23 @@ from report_writer import write_json_report
 from yt_client import YTClient
 
 
-CONFIG_PATH = r"C:\YTSystem\config\config.yaml"
-CHANNELS_PATH = r"C:\YTSystem\config\channels.yaml"
+def resolve_repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def resolve_config_path() -> Path:
+    config_dir = resolve_repo_root() / "config"
+    if platform.system() == "Darwin":
+        return config_dir / "config.mac.yaml"
+    return config_dir / "config.yaml"
+
+
+def resolve_channels_path() -> Path:
+    return resolve_repo_root() / "config" / "channels.yaml"
+
+
+CONFIG_PATH = resolve_config_path()
+CHANNELS_PATH = resolve_channels_path()
 # TEST_MAX_CANDIDATES = 1
 
 
