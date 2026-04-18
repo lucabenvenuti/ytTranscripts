@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import random
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -145,9 +146,13 @@ class YTClient:
         self.rss_max_items = int(yt_cfg.get("rss_max_items", 2))
         self.rss_retry_count = int(yt_cfg.get("rss_retry_count", 2))
         self.rss_retry_base_seconds = float(yt_cfg.get("rss_retry_base_seconds", 2.0))
+        self.rss_max_404_warnings = int(yt_cfg.get("rss_max_404_warnings", 3))
+        self.discovery_fallback_to_ytdlp = bool(yt_cfg.get("discovery_fallback_to_ytdlp", True))
+        self.discovery_request_weight = float(yt_cfg.get("discovery_request_weight", 1.5))
+        self.python_executable = sys.executable or "python"
 
-    def _base_ytdlp_args(self) -> list[str]:
-        args = ["python", "-m", "yt_dlp"]
+    def _base_ytdlp_args(self, *, allow_playlist: bool = False) -> list[str]:
+        args = [self.python_executable, "-m", "yt_dlp"]
 
         if self.use_cookies_if_present and self.cookies_path and Path(self.cookies_path).exists():
             args += ["--cookies", self.cookies_path]
@@ -157,8 +162,9 @@ class YTClient:
             "--js-runtimes", "deno",
             "--user-agent", self.user_agent,
             "--referer", self.referer,
-            "--no-playlist",
         ]
+        if not allow_playlist:
+            args.append("--no-playlist")
         return args
 
     def _run(self, args: list[str], *, weight: float, label: str) -> subprocess.CompletedProcess[str]:
@@ -192,9 +198,155 @@ class YTClient:
         assert last_error is not None
         raise last_error
 
+    def _log_rss_retry(self, channel_name: str, ex: Exception, attempt: int, total_attempts: int, delay: float) -> None:
+        if isinstance(ex, urllib.error.HTTPError) and ex.code == 404:
+            if attempt <= self.rss_max_404_warnings:
+                self.logger.warning(
+                    "RSS fetch failed for %s with HTTP 404 on attempt %s/%s. Retrying in %.2f seconds.",
+                    channel_name,
+                    attempt,
+                    total_attempts,
+                    delay,
+                )
+            elif attempt == self.rss_max_404_warnings + 1:
+                self.logger.info(
+                    "RSS fetch for %s is still returning HTTP 404. Further 404 retry warnings are suppressed after %s attempts; continuing retries up to %s total attempts.",
+                    channel_name,
+                    self.rss_max_404_warnings,
+                    total_attempts,
+                )
+            return
+
+        if isinstance(ex, urllib.error.HTTPError):
+            self.logger.warning(
+                "RSS fetch failed for %s with HTTP %s on attempt %s/%s. Retrying in %.2f seconds.",
+                channel_name,
+                ex.code,
+                attempt,
+                total_attempts,
+                delay,
+            )
+            return
+
+        self.logger.warning(
+            "RSS fetch failed for %s on attempt %s/%s: %s. Retrying in %.2f seconds.",
+            channel_name,
+            attempt,
+            total_attempts,
+            ex,
+            delay,
+        )
+
+    def _uploads_playlist_url(self, channel_id: str) -> str:
+        if channel_id.startswith("UC") and len(channel_id) > 2:
+            return f"https://www.youtube.com/playlist?list=UU{channel_id[2:]}"
+        return f"https://www.youtube.com/channel/{channel_id}/videos"
+
+    def _parse_ytdlp_publication_datetime(self, entry: dict[str, Any]) -> datetime | None:
+        timestamp = entry.get("timestamp") or entry.get("release_timestamp")
+        if isinstance(timestamp, (int, float)):
+            return datetime.fromtimestamp(timestamp)
+
+        for key in ("upload_date", "release_date"):
+            raw = entry.get(key)
+            if not raw:
+                continue
+            raw_str = str(raw).strip()
+            for fmt in ("%Y%m%d", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(raw_str, fmt)
+                except ValueError:
+                    continue
+        return None
+
+    def _fetch_recent_videos_via_ytdlp(self, channel: dict) -> list[VideoInfo]:
+        channel_id = channel["id"]
+        channel_name = channel["name"]
+        source_url = self._uploads_playlist_url(channel_id)
+
+        args = self._base_ytdlp_args(allow_playlist=True) + [
+            "--dump-single-json",
+            "--playlist-end", str(self.rss_max_items),
+            source_url,
+        ]
+
+        cp = self._run(
+            args,
+            weight=self.discovery_request_weight,
+            label="discovery fallback",
+        )
+
+        if cp.returncode != 0:
+            raise RuntimeError(cp.stderr or cp.stdout or "yt-dlp discovery fallback failed")
+
+        payload = (cp.stdout or "").strip()
+        if not payload:
+            raise RuntimeError("yt-dlp discovery fallback returned empty output")
+
+        data = json.loads(payload)
+        entries = data.get("entries") or []
+        videos: list[VideoInfo] = []
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+
+            video_id = str(entry.get("id") or "").strip()
+            title = str(entry.get("title") or "").strip()
+            if not video_id or not title:
+                continue
+
+            publication_datetime = self._parse_ytdlp_publication_datetime(entry)
+            if publication_datetime is None:
+                self.logger.warning(
+                    "Skipping yt-dlp discovery item for %s because publication date could not be parsed: id=%s title=%s",
+                    channel_name,
+                    video_id,
+                    title,
+                )
+                continue
+
+            video_url = str(entry.get("webpage_url") or "").strip()
+            if not video_url:
+                raw_url = str(entry.get("url") or "").strip()
+                if raw_url.startswith("http"):
+                    video_url = raw_url
+                elif raw_url.startswith("/shorts/"):
+                    video_url = f"https://www.youtube.com{raw_url}"
+                else:
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+
+            metadata = {
+                "discovery_source": "yt_dlp_fallback",
+                "channel_name": channel_name,
+                "source_url": source_url,
+                "upload_date": entry.get("upload_date"),
+                "timestamp": entry.get("timestamp"),
+            }
+
+            videos.append(
+                VideoInfo(
+                    video_id=video_id,
+                    channel_id=channel_id,
+                    channel_name=channel_name,
+                    title=title,
+                    video_url=video_url,
+                    publication_datetime=publication_datetime,
+                    duration_seconds=entry.get("duration"),
+                    language_hint=None,
+                    is_short=1 if "/shorts/" in video_url else 0,
+                    metadata_json=json.dumps(metadata, ensure_ascii=False),
+                )
+            )
+
+        videos = videos[: self.rss_max_items]
+        self.logger.info("yt-dlp fallback worked for %s with %s IDs", channel_name, len(videos))
+        return videos
+
     def fetch_recent_videos(self, channel: dict) -> list[VideoInfo]:
         """
-        RSS-only discovery to reduce yt-dlp metadata calls and avoid 429s.
+        Prefer RSS discovery. If YouTube's RSS endpoint keeps failing, fall back to yt-dlp
+        against the channel uploads playlist.
         """
         channel_id = channel["id"]
         channel_name = channel["name"]
@@ -210,8 +362,9 @@ class YTClient:
 
         last_error: Exception | None = None
         xml_bytes: bytes | None = None
+        total_attempts = self.rss_retry_count + 1
 
-        for attempt in range(1, self.rss_retry_count + 2):
+        for attempt in range(1, total_attempts + 1):
             try:
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     xml_bytes = resp.read()
@@ -219,34 +372,31 @@ class YTClient:
             except urllib.error.HTTPError as ex:
                 last_error = ex
                 retryable = ex.code in {404, 429, 500, 502, 503, 504}
-                if not retryable or attempt > self.rss_retry_count:
-                    raise
-                delay = self.rss_retry_base_seconds * attempt
-                self.logger.warning(
-                    "RSS fetch failed for %s with HTTP %s on attempt %s/%s. Retrying in %.2f seconds.",
-                    channel_name,
-                    ex.code,
-                    attempt,
-                    self.rss_retry_count + 1,
-                    delay,
-                )
-                time.sleep(delay)
+                if retryable and attempt <= self.rss_retry_count:
+                    delay = self.rss_retry_base_seconds * attempt
+                    self._log_rss_retry(channel_name, ex, attempt, total_attempts, delay)
+                    time.sleep(delay)
+                    continue
+                break
             except Exception as ex:
                 last_error = ex
-                if attempt > self.rss_retry_count:
-                    raise
-                delay = self.rss_retry_base_seconds * attempt
-                self.logger.warning(
-                    "RSS fetch failed for %s on attempt %s/%s: %s. Retrying in %.2f seconds.",
-                    channel_name,
-                    attempt,
-                    self.rss_retry_count + 1,
-                    ex,
-                    delay,
-                )
-                time.sleep(delay)
+                if attempt <= self.rss_retry_count:
+                    delay = self.rss_retry_base_seconds * attempt
+                    self._log_rss_retry(channel_name, ex, attempt, total_attempts, delay)
+                    time.sleep(delay)
+                    continue
+                break
 
         if xml_bytes is None:
+            if self.discovery_fallback_to_ytdlp:
+                self.logger.warning(
+                    "RSS discovery exhausted for %s after %s attempt(s): %s. Falling back to yt-dlp uploads discovery.",
+                    channel_name,
+                    total_attempts,
+                    last_error,
+                )
+                return self._fetch_recent_videos_via_ytdlp(channel)
+
             assert last_error is not None
             raise last_error
 
@@ -300,7 +450,7 @@ class YTClient:
                     publication_datetime=publication_datetime,
                     duration_seconds=None,
                     language_hint=None,
-                    is_short=0,
+                    is_short=1 if "/shorts/" in video_url else 0,
                     metadata_json=json.dumps(metadata, ensure_ascii=False),
                 )
             )
@@ -316,7 +466,8 @@ class YTClient:
         languages: list[str],
         source_type: str,
     ) -> Path | None:
-        args = self._base_ytdlp_args() + [
+        base_args = self._base_ytdlp_args()
+        args = base_args + [
             "--skip-download",
             "--sub-langs", ",".join(languages),
             "--sub-format", "vtt",
@@ -324,7 +475,7 @@ class YTClient:
             video_url,
         ]
 
-        insert_at = len(self._base_ytdlp_args())
+        insert_at = len(base_args)
         if source_type == "manual":
             args.insert(insert_at, "--write-subs")
         elif source_type == "auto":
