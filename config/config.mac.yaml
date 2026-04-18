@@ -54,6 +54,7 @@ yt:
   discovery_fallback_to_ytdlp: true
   discovery_request_weight: 1.5
   cookies_path: ${HOME}/YTSystem/config/cookies.txt
+  cookies_from_browser: chrome
   use_cookies_if_present: true
   user_agent: Mozilla/5.0
   referer: https://www.youtube.com/

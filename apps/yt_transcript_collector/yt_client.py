@@ -141,6 +141,7 @@ class YTClient:
         self.max_429_retries = int(yt_cfg.get("max_429_retries", 3))
         self.use_cookies_if_present = bool(yt_cfg.get("use_cookies_if_present", True))
         self.cookies_path = yt_cfg.get("cookies_path")
+        self.cookies_from_browser = str(yt_cfg.get("cookies_from_browser", "")).strip()
         self.user_agent = yt_cfg.get("user_agent", "Mozilla/5.0")
         self.referer = yt_cfg.get("referer", "https://www.youtube.com/")
         self.ytdlp_remote_components = str(yt_cfg.get("ytdlp_remote_components", "")).strip()
@@ -158,6 +159,8 @@ class YTClient:
 
         if self.use_cookies_if_present and self.cookies_path and Path(self.cookies_path).exists():
             args += ["--cookies", self.cookies_path]
+        elif self.cookies_from_browser:
+            args += ["--cookies-from-browser", self.cookies_from_browser]
 
         if self.ytdlp_remote_components:
             args += ["--remote-components", self.ytdlp_remote_components]
