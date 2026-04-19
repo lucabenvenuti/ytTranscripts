@@ -159,3 +159,13 @@ channels:
     language: "english"
     enabled: true
 
+
+  - name: "MarcelloAscani"
+    id: "UCS5PaGnSnFUnrjSc80XRnqw"
+    language: "italian"
+    enabled: true
+
+  - name: "PlainBagel"
+    id: "UCFCEuCsyWP0YkP3CZ3Mr01Q"
+    language: "english"
+    enabled: true
