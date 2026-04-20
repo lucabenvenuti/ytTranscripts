@@ -153,6 +153,9 @@ class YTClient:
         self.rss_max_404_warnings = int(yt_cfg.get("rss_max_404_warnings", 3))
         self.discovery_fallback_to_ytdlp = bool(yt_cfg.get("discovery_fallback_to_ytdlp", True))
         self.discovery_request_weight = float(yt_cfg.get("discovery_request_weight", 1.5))
+        self.discovery_max_429_retries = int(yt_cfg.get("discovery_max_429_retries", 1))
+        self.discovery_rate_limit_pause_seconds = float(yt_cfg.get("discovery_rate_limit_pause_seconds", 1800.0))
+        self.discovery_rate_limited_until = 0.0
         self.python_executable = sys.executable or "python"
 
     def _base_ytdlp_args(self, *, allow_playlist: bool = False) -> list[str]:
@@ -192,10 +195,18 @@ class YTClient:
             args.append("--no-playlist")
         return args
 
-    def _run(self, args: list[str], *, weight: float, label: str) -> subprocess.CompletedProcess[str]:
+    def _run(
+        self,
+        args: list[str],
+        *,
+        weight: float,
+        label: str,
+        max_429_retries: int | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         last_error: Exception | None = None
+        retries = self.max_429_retries if max_429_retries is None else max_429_retries
 
-        for attempt in range(1, self.max_429_retries + 2):
+        for attempt in range(1, retries + 2):
             self.limiter.before_request(weight=weight, label=label, attempt=attempt)
 
             self.logger.info("Running: %s", " ".join(args))
@@ -213,7 +224,7 @@ class YTClient:
             if "429" in combined or "too many requests" in lowered:
                 self.limiter.on_429()
                 last_error = RateLimitError("YouTube rate limit detected")
-                if attempt <= self.max_429_retries:
+                if attempt <= retries:
                     continue
                 raise last_error
 
@@ -289,17 +300,34 @@ class YTClient:
         channel_name = channel["name"]
         source_url = self._uploads_playlist_url(channel_id)
 
+        now_ts = time.time()
+        if now_ts < self.discovery_rate_limited_until:
+            resume_at = datetime.fromtimestamp(self.discovery_rate_limited_until).isoformat(timespec="seconds")
+            raise RateLimitError(
+                f"Discovery fallback temporarily paused until {resume_at} after repeated YouTube rate limits"
+            )
+
         args = self._base_ytdlp_args(allow_playlist=True) + [
             "--dump-single-json",
             "--playlist-end", str(self.rss_max_items),
             source_url,
         ]
 
-        cp = self._run(
-            args,
-            weight=self.discovery_request_weight,
-            label="discovery fallback",
-        )
+        try:
+            cp = self._run(
+                args,
+                weight=self.discovery_request_weight,
+                label="discovery fallback",
+                max_429_retries=self.discovery_max_429_retries,
+            )
+        except RateLimitError:
+            self.discovery_rate_limited_until = time.time() + self.discovery_rate_limit_pause_seconds
+            resume_at = datetime.fromtimestamp(self.discovery_rate_limited_until).isoformat(timespec="seconds")
+            self.logger.warning(
+                "Pausing yt-dlp discovery fallback until %s after repeated 429 responses.",
+                resume_at,
+            )
+            raise
 
         if cp.returncode != 0:
             raise RuntimeError(cp.stderr or cp.stdout or "yt-dlp discovery fallback failed")

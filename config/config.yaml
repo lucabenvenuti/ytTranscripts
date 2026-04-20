@@ -68,6 +68,8 @@ yt:
     - en
   allow_any_subtitle_fallback: true
   max_429_retries: 4
+  discovery_max_429_retries: 1
+  discovery_rate_limit_pause_seconds: 1800.0
   post_429_cooldown_seconds: 45.0
   base_interval_seconds: 6.0
   max_interval_seconds: 240.0
